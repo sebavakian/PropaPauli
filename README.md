@@ -13,10 +13,11 @@ All you need to do to use the code is load the repo into your workspace on the W
 
 Once you have loaded all the files into the your workspace, open the example markdown files. It contains runable code that you can follow to learn how to use this library. 
 
-## Contributors
+## Authors
 
-- Sebastien J Avakian.
-- Pierre-Gabriel Rozon.
+The two main authors for this work are Sebastien J Avakian and Pierre-Gabriel Rozon. 
+
+If you any requests, bugs to report or issues please make an issue here and we will gladly take a look for you :)
 
 ## Citation
 
