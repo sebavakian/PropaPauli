@@ -1,0 +1,233 @@
+/* Conventions:
+
+1. All pauli string are operator sums, they must be for looped over. 
+2. The number of terms in the sums must be checked with get_coefficients and return its size. 
+3. The support of the operator sum helps loop over products as the support can only contain at most 
+   one pauli per site. 
+4. No identities should ever appear in the paulistirng as the simplify removes them. 
+*/
+
+
+/*
+ Applies a pauli operator X,Y,Z to the operator sum.
+*/
+def apply_pauli_gate(ComplexOperatorSum ps,op)
+{
+    // get info and format
+    var coeffs = get_coefficients(ps);
+    var n_terms = coeffs.size();
+    ps = reorder_by_site(ps);
+    var result = operator_sum(as_complex)
+
+    for(var n = 0 ; n < n_terms ; ++n)
+    {
+        var coeff = ps[n].first
+        var prod = operator_prod(ps[n].second)
+
+        var sup = support(prod)
+        var acts_on_site = sup.contains(op.sites()[0])
+        if(acts_on_site) // op present on site
+        {
+            // make list of sites:
+            var sites = []
+            for(s : sup)
+            {
+                sites.push_back(s)
+            }
+            sites.reverse()
+
+            // find the operator at the site:
+            var ind_op = sites.index(op.sites()[0])
+            var op_name = name(prod[ind_op])
+            if( op_name == name(op)) // commutes
+            {
+                result += coeff * prod
+            }
+            else // anticommutes
+            {
+                result += -coeff * prod
+            }
+        }
+        else // op not present so add it
+        {
+            result += coeff * op * prod
+        }
+    }
+    // flatten the products
+    flatten(result)
+    return result
+}
+
+/*
+Applies a single site rotation along x,y,z to an input pauli string sum.
+Currently takes in the paulioperator and an angle, eventually will take 
+in the Rot operator directly and get the theta out of it.
+*/
+def apply_single_pauli_rotation(ComplexOperatorSum ps, op, real theta)
+{
+    // get info and format
+    var coeffs = get_coefficients(ps);
+    var n_terms = coeffs.size();
+    ps = reorder_by_site(ps);
+    var result = operator_sum(as_complex)
+    // get rotation info
+    var site = op.sites()[0]
+    var rot_axis = name(op)
+    var c = cos(theta)
+    var s = sin(theta)
+
+    for(var n = 0 ; n < n_terms ; ++n)
+    {
+        var coeff = ps[n].first
+        var prod = operator_prod(ps[n].second)
+
+        var sup = support(prod)
+        var acts_on_site = sup.contains(site)
+        if(acts_on_site)
+        {
+            // Make list of sites
+            var sites = []
+            for(st : sup)
+            {
+                sites.push_back(st)
+            }
+            sites.reverse()
+            // Find the operator at the site
+            var ind_op = sites.index(site)
+            var old_op = prod[ind_op]
+            var op_name = name(old_op)
+
+            //dispatch based on what gate we have:
+            if(op_name == rot_axis)
+            {
+                result += coeff * (prod)
+            }
+            else
+            {
+                //build new prod:
+                var new_prod = operator_prod()
+                for(var k = 0 ; k < sites.size() ; ++k)
+                {   
+                    if(k != ind_op)
+                    {
+                        new_prod *= prod[k]
+                    }
+                    else
+                    {
+                        new_prod = operator_sum(c*old_op + complex(s)*op*old_op)
+                    }
+                }
+                
+                result += coeff * new_prod
+            }
+        }
+        else
+        {
+            result += coeff * prod
+        }
+    }
+    // simplify
+    flatten(result)
+    result = simplify_paulis(result)
+
+    return result
+}
+
+/*
+Applies a rotation on two sites around the XX,YY,ZZ axes.
+*/
+def apply_double_pauli_rotation(ComplexOperatorSum ps, op, real theta)
+{
+    // get info and format
+    var coeffs = get_coefficients(ps);
+    var n_terms = coeffs.size();
+    ps = reorder_by_site(ps);
+    var result = operator_sum(as_complex)
+    // get rotation info
+    var rot_axis = name(op)
+    var c = cos(theta)
+    var s = sin(theta)
+
+    for(var n = 0 ; n < n_terms ; ++n)
+    {
+        var coeff = ps[n].first
+        var prod = operator_prod(ps[n].second)
+        var sup = support(prod)
+        var acts_on_site1 = sup.contains(op.sites()[0])  
+        var acts_on site2 = sup.contains(op.sites()[1])
+        var anticomm1 = false
+        var anticimm2 = false
+        // Make list of sites
+        var sites = []
+        for(st : sup)
+        {
+            sites.push_back(st)
+        }
+        sites.reverse()
+
+        if(!(acts_on_site1 && acts_on_site2)) // o
+        {
+
+        }
+
+        if(acts_on_site1) {
+            var ind_op = sites.index(op.sites()[0])
+            var old_op = prod[ind_op]
+            var op_name = name(old_op)
+            anticomm1 = op_name1 != rot_axis[0]
+        }
+        if(acts_on_site2) {
+            var ind_op = sites.index(op.sites()[1])
+            var old_op = prod[ind_op]
+            var op_name = name(old_op)
+            anticomm2 = op_name1 != rot_axis[0]
+        }
+
+        if(anticomm1 ^ anticomm2) { // anticommutes
+
+            //build new prod:
+            var new_prod = operator_prod()
+            for(var k = 0 ; k < sites.size() ; ++k)
+            {   
+                if(k != ind_op)
+                {
+                    new_prod *= prod[k]
+                }
+                else
+                {
+                    new_prod = operator_sum(c*old_op + complex(s)*op*old_op)
+                }
+            }
+            
+            result += coeff * new_prod
+        }
+        else {
+            result += coeff * prod
+        }
+    }
+
+    flatten(result)
+    result = simplify_paulis(result)
+
+    return result
+}
+
+
+
+
+// testing: 
+var ps = operator_sum(as_complex)
+ps += 1.0 * Z(0) 
+ps += 2.0 * Y(2)
+var rotated = apply_pauli_rotation(ps, X(0), pi/4)
+print("R_X(pi/4)^dag Z R_X(pi/4) = ${rotated}")
+
+
+
+
+
+
+
+
+
+

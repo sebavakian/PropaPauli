@@ -1,0 +1,2 @@
+var ps = operator_sum()
+ps += Z(0)

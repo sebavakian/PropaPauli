@@ -1,0 +1,20 @@
+/*
+ Function that wraps all test functions. 
+ Test function signature: test_NAME() -> bool. 
+*/
+def run_all_tests(test_list)
+{
+    var count = 0
+
+    for(t: test_list)
+    {
+        if(t())
+        {
+            count += 1
+        }
+    }
+
+    if (count == test_list.size()) { print("\nSTATUS : PASS") }
+    else { print("\nSTATUS : FAIL")}
+    print("Number of tests passed : ${count}/${test_list.size()} , (${real(count)*100.0/real(test_list.size())}%)")
+}

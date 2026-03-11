@@ -1,0 +1,44 @@
+include "PauliPropagation/circuit-handling.aleph"
+include "PauliPropagation/testing-functions.aleph"
+
+// Test layer application ---------------------------
+def test_prod() {
+    var pass = false
+    var sum = operator_sum()
+    var prod1 = operator_prod()
+
+    var gates = [X(0),Y(1),Z(1)]
+    for(g: gates)
+    {
+        prod1 *= g
+    }
+    sum += Z(1)
+
+    propagate_layer(prod1, gates.size(), sum)
+    pass = true
+
+    return pass
+}
+
+// run all registered tests ----------------------------
+run_all_tests([test_prod])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// run tests
+
+
+
+
+
