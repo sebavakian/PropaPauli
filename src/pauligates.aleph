@@ -1,0 +1,190 @@
+/*
+    Converts any supported operator to an equivalent ComplexOperatorSum of Pauli strings.
+    
+    Supported operators:
+    - OperatorPauliString: returned as-is (wrapped in sum)
+    - OperatorNamed: Paulis (X, Y, Z, XX, YY, ZZ) returned as-is; other 1/2-site gates decomposed
+    - OperatorParam<real>: decomposed via matrix representation
+    
+    For parametrized and non-Pauli named operators, we use Pauli decomposition:
+    - 1-qubit: U = a*I + b*X + c*Y + d*Z  where coeffs come from Tr(P*U)/2
+    - 2-qubit: U = sum_{ij} c_{ij} * P_i x P_j  where c_{ij} = Tr((P_i x P_j)*U)/4
+*/
+def op_to_pauli_sum(operator) {
+
+    var type_name = get_type_info(operator).name
+    
+    if (type_name == "OperatorPauliString") {
+        return 1.0 * operator
+    }
+    
+    if (type_name == "OperatorNamed") {
+
+        var op_name = operator.name()
+        if (op_name == "X" || op_name == "Y" || op_name == "Z") {
+            return 1.0 * operator
+        }
+        if (op_name == "XX") {
+            var sites = operator.support()
+            return 1.0 * (X(sites.min())*X(sites.max()))
+        }
+        if (op_name == "YY") {
+            var sites = operator.support()
+            return 1.0 * (Y(sites.min())*Y(sites.max()))
+        }
+        if (op_name == "ZZ") {
+            var sites = operator.support()
+            return 1.0 * (Z(sites.min())*Z(sites.max()))
+        }
+        if (op_name == "H" || op_name == "S" || op_name == "T" ||
+            op_name == "SP" || op_name == "SM" ||
+            op_name == "SX" || op_name == "SY" || op_name == "SZ" ||
+            op_name == "Splus" || op_name == "Sminus") {
+            var sites = operator.support()
+            var site = max(sites)
+            var mat = matrix(operator, as_complex)
+            return decompose_1q_to_pauli(mat, site)
+        }
+        if (op_name == "CNOT" || op_name == "SWAP" || op_name == "XXPYY") {
+            var sites = operator.support()
+            var site0 = min(sites)
+            var site1 = max(sites)
+            var mat = matrix(operator, as_complex)
+            return decompose_2q_to_pauli(mat, site0, site1)
+        }
+        throw(RuntimeError("Unsupported OperatorNamed: " + op_name))
+    }
+    
+    // Parametrized operators - use matrix decomposition based on number of sites
+    if (type_name == "OperatorParam<real>") {
+        var sites = operator.support()
+        var num_sites = sites.size()
+        var mat = matrix(operator, as_complex)
+
+        if (num_sites == 1) {
+            var site = max(sites)
+            return decompose_1q_to_pauli(mat, site)
+        }
+        if (num_sites == 2) {
+            var site0 = min(sites)
+            var site1 = max(sites)
+            return decompose_2q_to_pauli(mat, site0, site1)
+        }
+        throw(RuntimeError("OperatorParam with " + string(num_sites) + " sites not supported"))
+    }
+    throw(RuntimeError("Unsupported operator type: " + type_name))
+}
+
+def decompose_1q_to_pauli(mat, site) {
+    var result = operator_sum()
+    var tol = 1e-14
+    var pauli_list = [ID(),X(site),Y(site),Z(site)]
+    for (var i = 0; i < 4; ++i) {
+        var dummy_mat = X(site)*X(site)
+        var coeff = trace(mat*matrix(pauli_list[i]*dummy_mat,as_complex))/2.0
+        if (abs(coeff) > tol){
+            result += coeff * pauli_list[i]
+        }
+    }
+    return result
+}
+
+def decompose_2q_to_pauli(mat, site0, site1) {
+
+    var pauli_list_s0 = [ID(),X(site0),Y(site0),Z(site0)]
+    var pauli_list_s1 = [ID(),X(site1),Y(site1),Z(site1)]
+    var result = operator_sum()
+    var tol = 1e-14
+    for (var i = 0; i < 4; ++i) {
+        for (var j = 0; j < 4; ++j) {
+            var dummy_mat = X(site0)*X(site1)*X(site0)*X(site1)
+            var Pij = (pauli_list_s0[i]*pauli_list_s1[j])
+            var coeff = trace(mat*matrix(Pij*dummy_mat,as_complex))/4.0
+            if (abs(coeff) > 1e-8){
+                result += coeff * Pij
+            }
+        }
+    }
+    return result
+}
+
+def apply_paulis(current_op, gate){
+    var output_sum = operator_sum(as_complex)
+    for (var ind_lhs = 0; ind_lhs < size(gate.get_coefficients()); ++ind_lhs){
+        for (var ind_center = 0; ind_center < size(current_op.get_coefficients()); ++ind_center){
+            for (var ind_rhs = 0; ind_rhs < size(gate.get_coefficients()); ++ind_rhs){
+                var op_left = gate[ind_lhs].second
+                var coeff_left = gate[ind_lhs].first
+                var op_center = current_op[ind_center].second
+                var coeff_center = current_op[ind_center].first
+                var op_right = gate[ind_rhs].second
+                var coeff_right = gate[ind_rhs].first
+                var full_coeff = conjugated(coeff_left)*coeff_center*coeff_right
+                var full_op = simplify_paulis(full_coeff*(op_left*op_center*op_right))
+                output_sum += full_op
+            }
+        }
+    }
+    return simplify_paulis(output_sum)
+}
+
+var all_ops = [
+X(0),
+ZZ(0, 1),
+RotZ(pi/4, 0),
+RotX(pi/2, 1),
+RotY(pi/3, 2),
+Hgate(0),
+Sgate(1),
+Tgate(2),
+SX(0),
+SY(1),
+SZ(2),
+Splus(0),
+Sminus(1),
+CNOT(0, 1),
+SWAP(1, 2),
+XXPYY(0, 1),
+RotEuler(0.8, 0.5, 1.2, 3),
+UnitaryXYZ([0.5, 1.0, 1.5], [0, 1]),
+Floquet([0.5, 1.0, 1.5], [1, 2]),
+DualUnitary(0.8, [2, 3]) 
+]
+
+print("Testing op_to_pauli_sum...")
+for (op : all_ops){
+    var tol = 1e-8
+    var rand_vector = state_vector(4,as_spinhalf)
+    var pauli_sum = op_to_pauli_sum(op)
+    var expected = matrix(op,as_complex)
+    var obtained = matrix(pauli_sum,as_complex)
+    var error = abs(sum(abs(array((expected - obtained)))))
+    var is_valid = (error < tol)
+    if (!is_valid){
+        throw(RuntimeError("Failed to convert the following operator to a Pauli sum: " + string(op)))
+    }
+}
+
+print("Testing apply_gate...")
+for (op : all_ops){
+    var stupid_id = X(0)*X(1)*X(2)*X(3)*X(4)*X(5)*X(0)*X(1)*X(2)*X(3)*X(4)*X(5)
+    var op_mat = matrix(op*stupid_id, as_complex)
+    var pauli_op = simplify_paulis((1.5)*(X(0)*Y(1)*Z(2)*X(3)*X(4)*Z(5)) + (7.1i)*(Y(2)*Z(3)*X(5)))
+    var pauli_op_mat = matrix(pauli_op, as_complex)
+    var gate = op_to_pauli_sum(op)
+    var obtained = matrix(apply_paulis(pauli_op , gate)*stupid_id,as_complex)
+    var expected = transposed(conjugated(op_mat))*pauli_op_mat*op_mat
+    var is_valid = ((obtained - expected).norm() < 1e-8)
+    if (!is_valid){
+        print((obtained - expected).norm())
+        throw(RuntimeError("The following operator failed the conjugation: " + string(op)))
+    }
+}
+
+// We do circuit evolution by doing:
+
+// Gate layer = [op1, op2, op3, ..., opN] where op1,...,opN are built from the op_to_pauli_sum function
+
+// We then apply the op1,...,opN on a sum of Pauli operators by 
+// calling sum_of_pauli_operators = apply_gate(sum_of_pauli_operators, gate) 
+// for each gate of the layer
